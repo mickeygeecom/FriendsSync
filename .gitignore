@@ -1,0 +1,9 @@
+# Local/editor files - never publish SavedVariables or logs
+*.bak
+*.log
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+.release/
+WTF/

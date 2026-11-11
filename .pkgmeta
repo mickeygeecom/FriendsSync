@@ -1,0 +1,4 @@
+package-as: FriendsSync
+
+ignore:
+  - .github
