@@ -5,6 +5,7 @@
 ## Version: @project-version@
 ## SavedVariables: FriendsSyncDB
 ## OptionalDeps: RXPGuides, TomTom
+## X-Curse-Project-ID: 1799382
 ## IconTexture: Interface\Icons\INV_Misc_GroupNeedMore
 ## AddonCompartmentFunc: FriendsSync_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: FriendsSync_OnAddonCompartmentEnter
