@@ -889,7 +889,7 @@ local WIN_W, WIN_H = 660, 540
 local LIST_W = 230
 local CARD_H, CARDS = 46, 9
 local BAR_TEX = "Interface\\TargetingFrame\\UI-StatusBar"
-local ICON = "Interface\\Icons\\INV_Misc_GroupNeedMore"
+local ICON = "Interface\\AddOns\\FriendsSync\\Icon"
 local GOLD, GREY, GREEN, WHITE = "|cffffd100", "|cff888888", "|cff40ff40", "|cffffffff"
 
 local function Plural(n, word)
