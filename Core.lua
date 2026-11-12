@@ -545,7 +545,7 @@ local function Distance(p)
     if not p.wx or not p.wy then return nil end
     local _, _, _, x, y, inst = GetPosition()
     if not x or inst ~= p.inst then return nil end
-    return math.sqrt((x - p.wx) ^ 2 + (y - p.wy) ^ 2)
+    return math.floor(math.sqrt((x - p.wx) ^ 2 + (y - p.wy) ^ 2) + 0.5)
 end
 
 local function CompareQuests(p)
@@ -1759,9 +1759,10 @@ end
 -- World map dots
 ------------------------------------------------------------------------
 
-local MAP_DOT = 14
+-- Same look and tooltip as OpenMap's friend dots, so both read alike on one map.
+local MAP_DOT = 12
 local CIRCLE_ATLAS = "WhiteCircle-RaidBlips"
-local CIRCLE_TEXTURE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local CIRCLE_TEXTURE = "Interface\\Minimap\\PartyRaidBlips"
 local mapPins, mapHolder = {}, nil
 local mapPinsAt, mapScale = 0, nil
 
@@ -1772,35 +1773,48 @@ local function Circle(tex)
     if not (atlasOK and tex.SetAtlas and pcall(tex.SetAtlas, tex, CIRCLE_ATLAS)) then tex:SetTexture(CIRCLE_TEXTURE) end
 end
 
+-- 4245 -> "4,245"
+local function Thousands(n)
+    local s = tostring(n)
+    while true do
+        local k
+        s, k = s:gsub("^(%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then return s end
+    end
+end
+
 local function MapPinEnter(pin)
     local p = pin.peer
     if not p then return end
+    local c = p.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[p.class]
+    local name = DisplayName(p)
+    local realm = p.key:match("%-([^%-]+)$")
+    if realm and realm ~= Realm() then name = name .. (FOREIGN_SERVER_LABEL or " (*)") end
     GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(ColoredName(p) .. (p.level and ("  |cffffffffLv %d|r"):format(p.level) or ""))
-    local zone = (p.zone and p.zone ~= "") and p.zone or "?"
-    if p.subzone and p.subzone ~= "" and p.subzone ~= p.zone then zone = zone .. " - " .. p.subzone end
+    GameTooltip:AddLine(name, c and c.r or 1, c and c.g or 1, c and c.b or 1)
+    if p.level and p.level > 0 then GameTooltip:AddLine((LEVEL or "Level") .. " " .. p.level, 1, 1, 1) end
+    local info = p.mapID and C_Map and SafeCall(C_Map.GetMapInfo, p.mapID)
+    local zone = (type(info) == "table" and info.name) or (p.zone ~= "" and p.zone) or "?"
     GameTooltip:AddLine(("%s  %.1f, %.1f"):format(zone, (p.mx or 0) / 100, (p.my or 0) / 100), 1, 1, 1)
     local d = Distance(p)
-    if d then GameTooltip:AddLine(d .. " yd from you", 0.8, 0.8, 0.8) end
-    GameTooltip:AddLine("FriendsSync - updated " .. Ago(GetTime() - (p.lastSeen or 0)), 0.6, 0.8, 1)
-    GameTooltip:AddLine("Click: set waypoint", 0.5, 0.5, 0.5)
+    if d then GameTooltip:AddLine(Thousands(d) .. " yd away", 1, 1, 1) end
+    GameTooltip:AddLine("Friend", 0.6, 0.8, 1)
+    local ago = math.floor(GetTime() - (p.lastSeen or 0))
+    if ago >= 20 then GameTooltip:AddLine(("Updated %d s ago"):format(ago), 0.6, 0.6, 0.6) end
     GameTooltip:Show()
 end
 
 local function NewMapPin(canvas)
     local pin = CreateFrame("Button", nil, canvas)
     pin:SetSize(MAP_DOT, MAP_DOT)
-    pin.ring = pin:CreateTexture(nil, "ARTWORK")
-    pin.ring:SetAllPoints()
-    Circle(pin.ring)
-    pin.ring:SetVertexColor(0, 0, 0, 0.9)
-    pin.dot = pin:CreateTexture(nil, "OVERLAY")
-    pin.dot:SetPoint("CENTER")
-    pin.dot:SetSize(MAP_DOT - 4, MAP_DOT - 4)
+    pin.dot = pin:CreateTexture(nil, "ARTWORK")
+    pin.dot:SetAllPoints()
     Circle(pin.dot)
-    pin.label = pin:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    pin.label:SetPoint("BOTTOM", pin, "TOP", 0, 1)
-    pin.label:SetShadowOffset(1, -1)
+    pin.glow = pin:CreateTexture(nil, "HIGHLIGHT")
+    pin.glow:SetAllPoints()
+    Circle(pin.glow)
+    pin.glow:SetBlendMode("ADD")
+    pin.glow:SetAlpha(0.3)
     pin:SetScript("OnEnter", MapPinEnter)
     pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
     pin:SetScript("OnClick", function(self) if self.peer then WaypointPeer(self.peer) end end)
@@ -1881,7 +1895,6 @@ local function UpdateMapPins()
                     pin.peer = p
                     local c = p.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[p.class]
                     pin.dot:SetVertexColor(c and c.r or 1, c and c.g or 1, c and c.b or 1, 1)
-                    pin.label:SetText("|c" .. ClassHex(p.class) .. DisplayName(p) .. "|r")
                     pin:SetScale(1 / scale)
                     pin:SetFrameLevel(level)
                     pin:ClearAllPoints()

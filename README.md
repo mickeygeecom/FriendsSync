@@ -32,7 +32,7 @@ Only messages from people on your friends lists are accepted. Both sides need th
 
 ## World map
 
-Synced friends who are online show as class-coloured dots with their name on your world map, on their zone and the
+Synced friends who are online show as class-coloured dots on your world map (same look as OpenMap's friend dots), on their zone and the
 continent around it. Hover a dot for level, zone, coordinates and distance; click it to set a waypoint.
 Works with OpenMap's stitched map too (and adds a "FriendsSync friends" switch to OpenMap's menu).
 Friends already on the map are not drawn twice: group members keep the map's own party dot, and friends
