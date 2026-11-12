@@ -28,7 +28,14 @@ Only messages from people on your friends lists are accepted. Both sides need th
     Different guides show two progress bars. **Match step** switches your guide/step to theirs.
   - **Quests** - You both have / You could pick up / Only you have / They have, you already did
   - Buttons: **Invite**, **Whisper**, **Waypoint** (TomTom if installed). Hover any button for help.
-- **Bottom:** Chat alerts checkbox, sync count, **Refresh** (re-discover friends now).
+- **Bottom:** Chat alerts and World map checkboxes, sync count, **Refresh** (re-discover friends now).
+
+## World map
+
+Synced friends who are online show as class-coloured dots with their name on your world map, on their zone and the
+continent around it. Hover a dot for level, zone, coordinates and distance; click it to set a waypoint.
+Works with OpenMap's stitched map too (and adds a "FriendsSync friends" switch to OpenMap's menu).
+Toggle with the checkbox or `/fsync map`.
 
 ## Minimap button
 
@@ -50,6 +57,7 @@ Names are class-coloured and clickable (click to whisper).
 | `/fsync list` | print synced friends to chat |
 | `/fsync status` | show who is reachable, sync count and the last error |
 | `/fsync notify` | toggle chat alerts |
+| `/fsync map` | show/hide friends on the world map |
 | `/fsync minimap` | show/hide the minimap button |
 | `/fsync forget Name` | remove a saved friend |
 | `/fsync debug` | print raw sync messages |

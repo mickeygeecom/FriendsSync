@@ -2,9 +2,9 @@
 ## Title: FriendsSync - by gEE
 ## Notes: Share level, quest and RestedXP guide progress with friends who also run the addon - no group required.
 ## Author: gEE
-## Version: 1.1.1
+## Version: 1.2.0
 ## SavedVariables: FriendsSyncDB
-## OptionalDeps: RXPGuides, TomTom
+## OptionalDeps: RXPGuides, TomTom, OpenMap
 ## X-Curse-Project-ID: 1799382
 ## IconTexture: Interface\AddOns\FriendsSync\Icon
 ## AddonCompartmentFunc: FriendsSync_OnAddonCompartmentClick

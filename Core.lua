@@ -158,9 +158,9 @@ local function DisplayName(p)
     return ShortName(p.key)
 end
 
--- Name the game accepts for /w and invites ("Jane Doe" -> "Jane-Doe" on Forever).
+-- Name for whispers, invites and chat links: as the character is called, space included ("Hr Stig").
 local function TargetName(p)
-    return (DisplayName(p):gsub(" ", "-"))
+    return DisplayName(p)
 end
 
 -- Class-colored, clickable [Name] for chat (click to whisper, right-click for menu).
@@ -803,8 +803,27 @@ local function InvitePeer(p)
     if invite then invite(name) end
 end
 
+-- Sets the whisper target on the chat box directly: "/w Hr Stig " would whisper "Hr" the text "Stig".
+local function OpenWhisper(name)
+    local U = ChatFrameUtil or {}
+    local choose = U.ChooseBoxForSend or ChatEdit_ChooseBoxForSend
+    local activate = U.ActivateChat or ChatEdit_ActivateChat
+    local box = choose and choose()
+    if not (box and activate and box.SetAttribute) then return false end
+    activate(box)
+    box:SetAttribute("chatType", "WHISPER")
+    box:SetAttribute("tellTarget", name)
+    if box.SetText then box:SetText("") end
+    local header = U.UpdateHeader or ChatEdit_UpdateHeader
+    if box.UpdateHeader then box:UpdateHeader() elseif header then header(box) end
+    return true
+end
+
 local function WhisperPeer(p)
-    local text = "/w " .. TargetName(p) .. " "
+    local name = TargetName(p)
+    local ok, done = pcall(OpenWhisper, name)
+    if ok and done then return end
+    local text = "/w " .. name .. " "
     if ChatFrame_OpenChat then
         ChatFrame_OpenChat(text)
     elseif ChatFrameUtil and ChatFrameUtil.OpenChat then
@@ -1499,8 +1518,24 @@ local function CreateUI()
     cbText:SetText("Chat alerts")
     f.notify = cb
 
+    local mcb = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    mcb:SetSize(24, 24)
+    mcb:SetPoint("LEFT", cbText, "RIGHT", 12, 0)
+    mcb:SetScript("OnClick", function(self) DB.mapDots = self:GetChecked() and true or false end)
+    mcb:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("World map", 1, 1, 1)
+        GameTooltip:AddLine("Show synced friends as class-coloured dots on your world map.", nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    mcb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local mcbText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    mcbText:SetPoint("LEFT", mcb, "RIGHT", 2, 0)
+    mcbText:SetText("World map")
+    f.mapDots = mcb
+
     f.status = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.status:SetPoint("LEFT", cbText, "RIGHT", 16, 0)
+    f.status:SetPoint("LEFT", mcbText, "RIGHT", 16, 0)
 
     local ping = MakeButton(f, "Refresh", 90, 22,
         "Look for online friends with FriendsSync now, instead of waiting for the next automatic check.")
@@ -1563,6 +1598,7 @@ end
 function RefreshUI()
     if not UI or not UI:IsShown() then return end
     UI.notify:SetChecked(DB.notify)
+    UI.mapDots:SetChecked(DB.mapDots ~= false)
 
     local list = SortedPeers()
     if selectedKey and not peers[selectedKey] then selectedKey = nil end
@@ -1720,6 +1756,156 @@ local function SystemFilter(_, _, msg, ...)
 end
 
 ------------------------------------------------------------------------
+-- World map dots
+------------------------------------------------------------------------
+
+local MAP_DOT = 14
+local CIRCLE_ATLAS = "WhiteCircle-RaidBlips"
+local CIRCLE_TEXTURE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local mapPins, mapHolder = {}, nil
+local mapPinsAt, mapScale = 0, nil
+
+local function MapDotsOn() return DB and DB.mapDots ~= false end
+
+local function Circle(tex)
+    local atlasOK = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(CIRCLE_ATLAS)
+    if not (atlasOK and tex.SetAtlas and pcall(tex.SetAtlas, tex, CIRCLE_ATLAS)) then tex:SetTexture(CIRCLE_TEXTURE) end
+end
+
+local function MapPinEnter(pin)
+    local p = pin.peer
+    if not p then return end
+    GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(ColoredName(p) .. (p.level and ("  |cffffffffLv %d|r"):format(p.level) or ""))
+    local zone = (p.zone and p.zone ~= "") and p.zone or "?"
+    if p.subzone and p.subzone ~= "" and p.subzone ~= p.zone then zone = zone .. " - " .. p.subzone end
+    GameTooltip:AddLine(("%s  %.1f, %.1f"):format(zone, (p.mx or 0) / 100, (p.my or 0) / 100), 1, 1, 1)
+    local d = Distance(p)
+    if d then GameTooltip:AddLine(d .. " yd from you", 0.8, 0.8, 0.8) end
+    GameTooltip:AddLine("FriendsSync - updated " .. Ago(GetTime() - (p.lastSeen or 0)), 0.6, 0.8, 1)
+    GameTooltip:AddLine("Click: set waypoint", 0.5, 0.5, 0.5)
+    GameTooltip:Show()
+end
+
+local function NewMapPin(canvas)
+    local pin = CreateFrame("Button", nil, canvas)
+    pin:SetSize(MAP_DOT, MAP_DOT)
+    pin.ring = pin:CreateTexture(nil, "ARTWORK")
+    pin.ring:SetAllPoints()
+    Circle(pin.ring)
+    pin.ring:SetVertexColor(0, 0, 0, 0.9)
+    pin.dot = pin:CreateTexture(nil, "OVERLAY")
+    pin.dot:SetPoint("CENTER")
+    pin.dot:SetSize(MAP_DOT - 4, MAP_DOT - 4)
+    Circle(pin.dot)
+    pin.label = pin:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pin.label:SetPoint("BOTTOM", pin, "TOP", 0, 1)
+    pin.label:SetShadowOffset(1, -1)
+    pin:SetScript("OnEnter", MapPinEnter)
+    pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    pin:SetScript("OnClick", function(self) if self.peer then WaypointPeer(self.peer) end end)
+    return pin
+end
+
+-- Where a friend is on the map shown (0..1 of the canvas), or nil when not on it.
+local function PeerOnMap(p, shown, stitched)
+    local x, y
+    if stitched then
+        if p.inst and p.inst >= 0 and p.wx and p.wy then
+            local ok, a, b = pcall(OpenMapAPI.CanvasFromWorldPos, p.inst, p.wx, p.wy)
+            if ok and type(a) == "number" and type(b) == "number" then return a, b end
+        end
+        return nil
+    end
+    local mx, my = p.mx / 10000, p.my / 10000
+    if p.mapID == shown then
+        x, y = mx, my
+    elseif C_Map and C_Map.GetMapRectOnMap then
+        local ok, left, right, top, bottom = pcall(C_Map.GetMapRectOnMap, p.mapID, shown)
+        left, right, top, bottom = Plain(left), Plain(right), Plain(top), Plain(bottom)
+        if ok and type(left) == "number" and type(right) == "number" and type(top) == "number"
+            and type(bottom) == "number" and right > left and bottom > top then
+            x, y = left + mx * (right - left), top + my * (bottom - top)
+        end
+    end
+    if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then return x, y end
+end
+
+local function UpdateMapPins()
+    local map = _G.WorldMapFrame
+    local canvas = map and map.GetCanvas and map:GetCanvas()
+    local used = 0
+    if canvas and map:IsShown() and MapDotsOn() then
+        local shown = map.GetMapID and map:GetMapID()
+        local api = _G.OpenMapAPI
+        local stitched = type(api) == "table" and type(api.IsStitched) == "function" and api.IsStitched()
+            and type(api.CanvasFromWorldPos) == "function"
+        local w, h = canvas:GetWidth(), canvas:GetHeight()
+        local scale = canvas:GetScale() or 1
+        if scale <= 0 then scale = 1 end
+        mapScale = scale
+        local level = canvas:GetFrameLevel() + 2000
+        if stitched and type(api.ArtTopLevel) == "function" then
+            local top = tonumber(api.ArtTopLevel())
+            if top and top + 5 > level then level = top + 5 end
+        end
+        level = math.min(level, 9900)
+        for _, p in pairs(peers) do
+            if IsActive(p) and p.mapID and p.mx and p.my and (shown or stitched) then
+                local x, y = PeerOnMap(p, shown, stitched)
+                if x then
+                    used = used + 1
+                    local pin = mapPins[used]
+                    if not pin or pin:GetParent() ~= canvas then
+                        if pin then pin:Hide() end
+                        pin = NewMapPin(canvas)
+                        mapPins[used] = pin
+                    end
+                    pin.peer = p
+                    local c = p.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[p.class]
+                    pin.dot:SetVertexColor(c and c.r or 1, c and c.g or 1, c and c.b or 1, 1)
+                    pin.label:SetText("|c" .. ClassHex(p.class) .. DisplayName(p) .. "|r")
+                    pin:SetScale(1 / scale)
+                    pin:SetFrameLevel(level)
+                    pin:ClearAllPoints()
+                    pin:SetPoint("CENTER", canvas, "TOPLEFT", x * w * scale, -y * h * scale)
+                    pin:Show()
+                end
+            end
+        end
+    end
+    for i = used + 1, #mapPins do mapPins[i]:Hide() end
+end
+
+local function HookWorldMap()
+    if mapHolder or not _G.WorldMapFrame then return end
+    mapHolder = CreateFrame("Frame", nil, _G.WorldMapFrame)
+    mapHolder:SetScript("OnUpdate", function()
+        local now = GetTime()
+        local canvas = _G.WorldMapFrame.GetCanvas and _G.WorldMapFrame:GetCanvas()
+        local zoomed = canvas and canvas:GetScale() ~= mapScale
+        if zoomed or now - mapPinsAt >= 0.2 then
+            mapPinsAt = now
+            Try(UpdateMapPins)
+        end
+    end)
+    mapHolder:SetScript("OnShow", function() mapPinsAt = 0 end)
+end
+
+local function RegisterOpenMapToggle()
+    local api = _G.OpenMapAPI
+    if type(api) ~= "table" or type(api.RegisterMenuToggle) ~= "function" then return end
+    api.RegisterMenuToggle(ADDON, {
+        id = "dots", label = "FriendsSync friends", icon = ICON, section = "FriendsSync",
+        get = MapDotsOn,
+        set = function(v)
+            DB.mapDots = v and true or false
+            if RefreshUI then RefreshUI() end
+        end,
+    })
+end
+
+------------------------------------------------------------------------
 -- Events / init
 ------------------------------------------------------------------------
 
@@ -1761,6 +1947,9 @@ events:SetScript("OnEvent", function(self, event, ...)
         Try(function() guideSig = BuildGuide() end)
         Try(RefreshTargets)
         Try(UpdateMinimapButton)
+        Try(HookWorldMap)
+        Try(RegisterOpenMapToggle)
+        if not mapHolder then C_Timer.NewTicker(2, function() if not mapHolder then Try(HookWorldMap) end end) end
 
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, text, channel, sender = ...
@@ -1845,10 +2034,14 @@ SlashCmdList.FRIENDSSYNC = function(msg)
         DB.minimapHide = not DB.minimapHide
         Try(UpdateMinimapButton)
         Print("Minimap button " .. (DB.minimapHide and "hidden." or "shown."))
+    elseif cmd == "map" then
+        DB.mapDots = not MapDotsOn()
+        Print("World map dots " .. (DB.mapDots and "shown." or "hidden."))
+        if RefreshUI then RefreshUI() end
     elseif cmd == "debug" then
         DB.debug = not DB.debug
         Print("Debug " .. (DB.debug and "on." or "off."))
     else
-        Print("/fsync - open window | /fsync ping | /fsync list | /fsync status | /fsync notify | /fsync minimap | /fsync forget <name> | /fsync debug")
+        Print("/fsync - open window | /fsync ping | /fsync list | /fsync status | /fsync notify | /fsync map | /fsync minimap | /fsync forget <name> | /fsync debug")
     end
 end
