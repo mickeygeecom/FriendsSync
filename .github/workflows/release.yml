@@ -17,4 +17,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check toc version matches tag
+        run: |
+          toc=$(sed -n 's/^## Version: *//p' FriendsSync.toc | tr -d '\r')
+          if [ "v$toc" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::FriendsSync.toc has Version $toc but the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
       - uses: BigWigsMods/packager@v2
