@@ -1831,6 +1831,23 @@ local function PeerOnMap(p, shown, stitched)
     if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then return x, y end
 end
 
+-- Friends another map layer already shows: group members (the map's own party/raid dots) and, on
+-- OpenMap's stitched map with its friends layer on, friends who share where they are through OpenMap.
+local function DrawnElsewhere(p, stitched)
+    if IsInGroup and SafeCall(IsInGroup) then
+        for _, inGroup in ipairs({ UnitInParty, UnitInRaid }) do
+            if SafeCall(inGroup, p.key) or SafeCall(inGroup, DisplayName(p)) then return true end
+        end
+    end
+    if not stitched then return false end
+    local om = _G.OpenMap
+    local mod = type(om) == "table" and type(om.GetModule) == "function" and SafeCall(om.GetModule, om, "worldmap")
+    if type(mod) ~= "table" or type(mod.FriendPlace) ~= "function" or not (type(mod.db) == "table" and mod.db.friends) then
+        return false
+    end
+    return SafeCall(mod.FriendPlace, p.key) ~= nil
+end
+
 local function UpdateMapPins()
     local map = _G.WorldMapFrame
     local canvas = map and map.GetCanvas and map:GetCanvas()
@@ -1851,7 +1868,7 @@ local function UpdateMapPins()
         end
         level = math.min(level, 9900)
         for _, p in pairs(peers) do
-            if IsActive(p) and p.mapID and p.mx and p.my and (shown or stitched) then
+            if IsActive(p) and p.mapID and p.mx and p.my and (shown or stitched) and not DrawnElsewhere(p, stitched) then
                 local x, y = PeerOnMap(p, shown, stitched)
                 if x then
                     used = used + 1
