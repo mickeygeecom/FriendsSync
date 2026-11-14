@@ -432,7 +432,9 @@ local function GetPosition()
 end
 
 local function BuildStatus()
-    local level = tonumber(Plain(UnitLevel("player"))) or 0
+    -- UnitLevel can briefly be 0 or hidden (loading screens); never send that, or friends see a fake level up.
+    local level = tonumber(Plain(UnitLevel("player")))
+    if level and level >= 1 then K.myLevel = level else level = K.myLevel or 0 end
     local xp, xpMax = tonumber(Plain(UnitXP("player"))) or 0, tonumber(Plain(UnitXPMax("player"))) or 0
     local rested = tonumber(SafeCall(GetXPExhaustion)) or 0
     local _, class = UnitClass("player")
@@ -715,8 +717,8 @@ end
 local OnMessage
 do
     local function HandleStatus(p, f)
-        local oldLevel = p.level
-        p.level = tonumber(f[3]) or p.level
+        local level = tonumber(f[3])
+        if level and level >= 1 then p.level = level end
         p.xp, p.xpMax, p.rested = tonumber(f[4]), tonumber(f[5]), tonumber(f[6])
         if f[7] and f[7] ~= "" then p.class = f[7] end
         p.mapID = tonumber(f[8])
@@ -731,9 +733,10 @@ do
                 Alert("Online", ("%s is online - level %s, %s."):format(ChatName(p), p.level or "?",
                     p.zone ~= "" and p.zone or "unknown zone"))
             end
-        elseif oldLevel and p.level and p.level > oldLevel and not IsHidden(p) then
+        elseif p.topLevel and p.level and p.level > p.topLevel and not IsHidden(p) then
             Alert("Level", ("%s |cffffd100reached level %d!|r"):format(ChatName(p), p.level))
         end
+        if p.level and p.level > (p.topLevel or 0) then p.topLevel = p.level end
         CheckNearby(p)
     end
 
