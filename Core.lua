@@ -497,22 +497,31 @@ local function QuestLogEntry(i)
     end
 end
 
--- Returns finished objectives, total objectives.
+-- Returns progress summed over all objectives (e.g. 3 of 8 wolves = 3, 8), so it moves with every kill or item.
 local function QuestObjectives(i, id)
     local done, total = 0, 0
+    local function add(have, need, finished, text)
+        have, need = tonumber(Plain(have)), tonumber(Plain(need))
+        if not need and type(text) == "string" then
+            local h, n = text:match("(%d+)%s*/%s*(%d+)")
+            have, need = tonumber(h), tonumber(n)
+        end
+        if not need or need < 1 then need, have = 1, finished and 1 or 0 end
+        if finished then have = need end
+        total = total + need
+        done = done + math.max(0, math.min(have or 0, need))
+    end
     if C_QuestLog and C_QuestLog.GetQuestObjectives then
         local list = SafeCall(C_QuestLog.GetQuestObjectives, id)
         if type(list) == "table" then
             for _, o in ipairs(list) do
-                total = total + 1
-                if type(o) == "table" and Plain(o.finished) then done = done + 1 end
+                if type(o) == "table" then add(o.numFulfilled, o.numRequired, Plain(o.finished), Plain(o.text)) end
             end
         end
     elseif GetNumQuestLeaderBoards and GetQuestLogLeaderBoard then
-        total = tonumber(GetNumQuestLeaderBoards(i)) or 0
-        for j = 1, total do
-            local _, _, finished = GetQuestLogLeaderBoard(j, i)
-            if finished then done = done + 1 end
+        for j = 1, tonumber(GetNumQuestLeaderBoards(i)) or 0 do
+            local text, _, finished = GetQuestLogLeaderBoard(j, i)
+            add(nil, nil, finished and true or false, Plain(text))
         end
     end
     return done, total
@@ -916,7 +925,10 @@ local function Tick()
 
     if questDirtyAt and now - questDirtyAt >= 1 then
         questDirtyAt = nil
-        if ScanQuests() then ForEachActiveRoute(SendQuestsTo) end
+        if ScanQuests() then
+            ForEachActiveRoute(SendQuestsTo)
+            if RefreshUI then RefreshUI() end
+        end
     end
 
     local g = BuildGuide()
@@ -3245,7 +3257,8 @@ events:SetScript("OnEvent", function(self, event, ...)
         end
 
     elseif event == "QUEST_LOG_UPDATE" then
-        questDirtyAt = GetTime()
+        -- Keep the first time: this event fires constantly in combat and must not keep pushing the scan back.
+        questDirtyAt = questDirtyAt or GetTime()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         questDirtyAt = GetTime()
