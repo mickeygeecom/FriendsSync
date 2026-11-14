@@ -18,6 +18,8 @@ Only messages from people on your friends lists are accepted. Both sides need th
 
 ## Window (`/fsync`, or click the minimap button)
 
+The slider left of the close button sets the window's opacity (drag or scroll, 30-100%).
+
 - **Left:** one card per synced friend - class icon, name, level, zone, XP bar and a badge
   (`Nearby`, `In sync`, `3 ahead`, `2 behind`, `Other guide`). Hover a card for details.
 - **Right:** the selected friend, in sections:

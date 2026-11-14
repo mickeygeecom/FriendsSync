@@ -1454,6 +1454,48 @@ local function CreateUI()
     tinsert(UISpecialFrames, f:GetName())
     SetTitle(f, "FriendsSync")
 
+    -- Opacity slider in the title bar, left of the close button.
+    local alpha = CreateFrame("Slider", nil, f)
+    alpha:SetOrientation("HORIZONTAL")
+    alpha:SetSize(80, 12)
+    if type(f.CloseButton) == "table" then
+        alpha:SetPoint("RIGHT", f.CloseButton, "LEFT", -6, 0)
+    else
+        alpha:SetPoint("TOPRIGHT", -32, -6)
+    end
+    local track = alpha:CreateTexture(nil, "BACKGROUND")
+    track:SetPoint("LEFT", 0, 0)
+    track:SetPoint("RIGHT", 0, 0)
+    track:SetHeight(4)
+    track:SetColorTexture(0.6, 0.6, 0.6, 0.6)
+    alpha:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    local thumb = alpha:GetThumbTexture()
+    if thumb then thumb:SetSize(16, 16) end
+    alpha:SetMinMaxValues(0.3, 1)
+    alpha:SetValueStep(0.05)
+    if alpha.SetObeyStepOnDrag then alpha:SetObeyStepOnDrag(true) end
+    local function AlphaTip(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(("Opacity: %d%%"):format(math.floor((DB.alpha or 1) * 100 + 0.5)), 1, 1, 1)
+        GameTooltip:AddLine("Drag or scroll to make the window see-through.", nil, nil, nil, true)
+        GameTooltip:Show()
+    end
+    alpha:SetScript("OnValueChanged", function(self, v)
+        v = math.floor((tonumber(v) or 1) * 20 + 0.5) / 20
+        DB.alpha = v
+        f:SetAlpha(v)
+        if GameTooltip.IsOwned and GameTooltip:IsOwned(self) then AlphaTip(self) end
+    end)
+    alpha:EnableMouseWheel(true)
+    alpha:SetScript("OnMouseWheel", function(self, delta)
+        self:SetValue(math.max(0.3, math.min(1, (DB.alpha or 1) + delta * 0.05)))
+    end)
+    alpha:SetScript("OnEnter", AlphaTip)
+    alpha:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    alpha:SetValue(DB.alpha or 1)
+    f:SetAlpha(DB.alpha or 1)
+    f.alpha = alpha
+
     -- Left: friend cards
     local listHead = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     listHead:SetPoint("TOPLEFT", 16, -32)
