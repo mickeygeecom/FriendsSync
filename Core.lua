@@ -2222,18 +2222,30 @@ local function CreateUI()
     syncAlpha()
     settingsViews[#settingsViews + 1] = syncAlpha
     f.alpha, f.alphaPop = alpha, pop
+    -- Hover shows the slider; a click pins it open until the eye is clicked again or Escape/close.
+    local pinned = false
     eye:SetScript("OnEnter", function() pop:Show() end)
-    eye:SetScript("OnClick", function() pop:SetShown(not pop:IsShown()) end)
+    eye:SetScript("OnClick", function()
+        pinned = not pinned
+        pop:SetShown(pinned or not pop:IsShown())
+    end)
     eye:EnableMouseWheel(true)
     eye:SetScript("OnMouseWheel", function(_, delta) alpha:GetScript("OnMouseWheel")(alpha, delta) end)
+    local function over(region, pad)
+        if not region.IsMouseOver then return true end
+        local ok, v = pcall(region.IsMouseOver, region, pad, -pad, -pad, pad)
+        return not ok or v
+    end
     local away = 0
+    pop:SetScript("OnHide", function() pinned = false; away = 0 end)
     pop:SetScript("OnUpdate", function(self, elapsed)
-        local over = MouseIsOver and (MouseIsOver(self) or MouseIsOver(eye))
-        if over or (alpha.IsDraggingThumb and alpha:IsDraggingThumb()) then
+        local dragging = (alpha.IsDraggingThumb and alpha:IsDraggingThumb())
+            or (IsMouseButtonDown and IsMouseButtonDown("LeftButton"))
+        if pinned or dragging or over(self, 8) or over(eye, 8) then
             away = 0
         else
             away = away + (elapsed or 0)
-            if away > 0.4 then away = 0; self:Hide() end
+            if away > 0.8 then away = 0; self:Hide() end
         end
     end)
     f:SetScale(tonumber(Opt("scale")) or 1)
