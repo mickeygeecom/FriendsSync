@@ -12,6 +12,7 @@ K.HEARTBEAT = 30                 -- always resend status at least this often
 K.STATUS_MIN_INTERVAL = 5
 K.MOVE_INTERVAL, K.MOVE_YARDS = 10, 25
 K.PEER_TIMEOUT = 100
+K.REANNOUNCE = 300             -- seconds a friend must have been gone before "is online" is shown again
 K.HELLO_BASE, K.HELLO_MAX = 60, 600
 K.TARGET_REFRESH = 15
 K.NEARBY_YARDS, K.NEARBY_COOLDOWN = 150, 300
@@ -144,8 +145,12 @@ end
 
 local function FullName(name, realm)
     if not name or name == "" then return nil end
+    name = name:gsub("%-$", "")
     if name:find("-", 1, true) then return name end
-    return name .. "-" .. (realm or Realm())
+    realm = realm or Realm()
+    -- The realm can be unknown for a moment at login; "Name-" would look like another character.
+    if not realm or realm == "" then return name end
+    return name .. "-" .. realm
 end
 
 -- Name with a trailing realm/shard removed. On Forever the part after a hyphen can also
@@ -256,10 +261,25 @@ end
 local function GetPeer(key)
     local p = peers[key]
     if not p then
-        p = { key = key, quests = {} }
+        -- Same character saved under another realm spelling (e.g. "Name-" from a login without realm): reuse it.
+        local id = CharId(key)
+        for k, old in pairs(peers) do
+            if CharId(k) == id then
+                -- Keep the name that has a realm.
+                if not key:find("-", 1, true) and k:find("%-.") then return old end
+                peers[k], p = nil, old
+                break
+            end
+        end
+        p = p or { quests = {} }
+        p.key = key
         peers[key] = p
     end
     return p
+end
+
+local function IsMe(key)
+    return key == myKey or (myKey and CharId(key) == CharId(myKey)) or false
 end
 
 local function SetOffline(p)
@@ -289,7 +309,7 @@ local function RefreshTargets()
     lastTargetRefresh = GetTime()
     local new, short = {}, {}
     local function add(full, route)
-        if not full or full == myKey then return end
+        if not full or IsMe(full) then return end
         local k = full:lower()
         if new[k] then return end
         new[k] = { key = full, route = route }
@@ -738,7 +758,7 @@ do
 
         if not p.announced then
             p.announced = true
-            if not IsHidden(p) then
+            if not IsHidden(p) and not (p.awayFor and p.awayFor < K.REANNOUNCE) then
                 Alert("Online", ("%s is online - level %s, %s."):format(ChatName(p), p.level or "?",
                     p.zone ~= "" and p.zone or "unknown zone"))
             end
@@ -829,9 +849,12 @@ do
         Debug("< " .. RouteId(route) .. " " .. text)
         local f = Split(text)
         local kind, key = f[1], f[2]
-        if not key or key == "" or key == myKey then return end
+        if key then key = key:gsub("%-$", "") end
+        if not key or key == "" or IsMe(key) then return end
 
         local p = GetPeer(key)
+        -- How long they were gone; a /reload (theirs or ours) or loading screen is not a new login.
+        if not p.online then p.awayFor = p.seenAt and time() - p.seenAt or nil end
         p.online, p.lastSeen, p.seenAt = true, GetTime(), time()
 
         if kind == "H" then
@@ -3218,13 +3241,34 @@ events:SetScript("OnEvent", function(self, event, ...)
         DB.hidden = DB.hidden or {}
         peers = DB.peers
         for _, p in pairs(peers) do
+            -- After a /reload, don't repeat "is nearby" for a friend who was next to us a moment ago.
+            local near = p.nearby and p.seenAt and time() - p.seenAt < K.REANNOUNCE
             for _, k in ipairs(SESSION_FIELDS) do p[k] = nil end
+            p.nearby = near or nil
         end
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
         myKey = FullName(PlayerName() or "?")
-        peers[myKey] = nil
+        for key in pairs(peers) do
+            if IsMe(key) then peers[key] = nil end
+        end
+        -- Old saves have "Name-" entries next to "Name-Realm" ones for the same friend: keep one.
+        local byId = {}
+        for key, p in pairs(peers) do
+            local id = CharId(key)
+            local other = byId[id]
+            if not other then
+                byId[id] = key
+            else
+                local keep, drop = other, key
+                if key:sub(-1) ~= "-" and (other:sub(-1) == "-" or (p.seenAt or 0) > (peers[other].seenAt or 0)) then
+                    keep, drop = key, other
+                end
+                peers[drop] = nil
+                byId[id] = keep
+            end
+        end
         -- Events and tickers first, so a failure below can never stop syncing.
         for _, e in ipairs({ "CHAT_MSG_ADDON", "BN_CHAT_MSG_ADDON", "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED",
             "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE", "QUEST_LOG_UPDATE", "PLAYER_ENTERING_WORLD" }) do
